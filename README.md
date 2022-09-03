@@ -1,4 +1,6 @@
 # cka-practice
+- 인터넷 Youtube 이성미 강사님의 따배씨의 내용을 정리한 것임
+  - https://www.youtube.com/playlist?list=PLApuRlvrZKojqx9-wIvWP3MPtgy2B372f
 - Certified Kubernetes Admin Study
 - K8S Documentation
   - https://kubernetes.io/docs/home/
