@@ -174,4 +174,62 @@ NAME                          READY   STATUS    RESTARTS       AGE
 * * *
 # 02. Pod 생성하기
 ## 검색 방법
+- 검색어: ``kubectl reference``
+  - ``Kubectl Reference Docs`` 선택
+  - https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands
 ## Problem: Pod 생성하기
+- Cluster: k8s
+- Create a new namespace and create a pod in the namespace
+  - namespace name: ``ecommerce``
+  - pod Name: ``eshop-main``
+  - image: ``nginx:1.17``
+  - env: ``DB=mysql``
+## 개념 소개
+- namespace: resource group
+  - Pod, Service, Volume, Deployment 등의 Resource들의 하나로 묶음
+  - 보통 namespace 단위로 프로젝트들을 진행
+  - 만약, 프로젝트가 크다면, Part별로 namespace를 나눠서 관리하기도 함
+## Answer
+- Namespace 생성 명령어
+  - ``$ kubectl create namespace NAME [--dry-run=server|client|none]``
+- Pod 생성 명령어
+  - ``$ kubectl run NAME --image=image [--env="key=value"] [--port=port] [--dry-run=server|client] [--overrides=inline-json] [--command] -- [COMMAND] [args...]``
+```bash
+# Step 01: Cluster Context 전환
+$ kubectl config use-context k8s
+Switched to context "k8s".
+# Step 02: Namespace 생성 (kubectl reference doc의 create 부분 참조)
+$ kubectl create namespace ecommerce
+namespace/ecommerce created
+$ kubectl get namespaces
+NAME              STATUS   AGE
+ecommerce         Active   7s
+...
+# Step 03: Pod 생성 (kubectl reference doc의 run 부분 참조)
+#   - dry-run option을 이용해서 문제 없는지 체크 
+#   - 주의 사항: 반드시 문제 조건의 namespace를 명시해 줘야 함
+$ kubectl run eshop-main --image=nginx:1.17 --env="DB=mysql" -n ecommerce --dry-run=client -o yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: eshop-main
+  name: eshop-main
+  namespace: ecommerce
+spec:
+  containers:
+  - env:
+    - name: DB
+      value: mysql
+    image: nginx:1.17
+    name: eshop-main
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+$ kubectl run eshop-main --image=nginx:1.17 --env="DB=mysql" -n ecommerce
+$ kubectl get pods -n ecommerce -o wide
+NAME         READY   STATUS    RESTARTS   AGE   IP          NODE       NOMINATED NODE   READINESS GATES
+eshop-main   1/1     Running   0          16s   10.40.0.3   worker-3   <none>           <none>
+```
