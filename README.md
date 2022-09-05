@@ -235,3 +235,166 @@ $ kubectl get pods -n ecommerce -o wide
 NAME         READY   STATUS    RESTARTS   AGE   IP          NODE       NOMINATED NODE   READINESS GATES
 eshop-main   1/1     Running   0          16s   10.40.0.3   worker-3   <none>           <none>
 ```
+# 03. Static Pod 생성하기
+## 검색 방법
+- 검색어: ``Static Pod``
+  - ``Create static Pods | Kubernetes`` 선택
+  - https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/
+## Problem: Static Pod 생성하기
+- Configure kubelet hosting to start a pod on the node
+  - Task:
+    - Node: hk8s-w1
+    - Pod Name: web
+    - image: nginx
+## 일반 Pod와 Static Pod의 차이점 알아보기
+- 일반 Pod
+![Pod_Create_Proc](./images/Pod_Create_Proc.png)
+  - ``kubectl`` 명령어를 이용해 Pod를 생성해달라는 요청을 받게 되면?
+    - Step 01: ``API``로 명령어가 전달됨
+    - Step 02: ``API``는 Master Node의 ``etcd``에 저장된 Cluster의 상태 정보를 꺼내서, ``Scheduler``에게 전달
+    - Step 03: ``Scheduler``는 전달된 상태 정보를 이용해서 가장 적합한 Worker Node를 선택해서 ``API``에게 알려줌
+    - Step 04: ``API``는 선택된 Worker Node내의 ``kubelet``에게 Pod의 생성 및 실행을 요청
+    - Step 05: ``kubelet``는 Worker Node내의 ``Container Engine``에게 Pod의 생성 및 실행을 요청
+    - Step 06: ``Container Engine``는 Docker Registry에서 Container Image를 다운로드 받아서 Pod를 생성해서 실행
+    - Step 07: ``Container Engine``는 실행된 상태 정보를 ``kubelet``에게 보냄
+    - Step 08: ``kubelet``는 실행된 상태 정보를 ``API``에게 보냄
+    - Step 09: ``API``는 실행된 상태 정보를 ``etcd``에 저장
+- Static Pod
+  - ``API``의 도움을 받지 않고 실행
+  - Worker Node의 ``kubelet``을 통해서 동작
+    - ``kubelet``은 Worker Node에서 Daemon 형태로 동작
+    - ``kubelet``의 구성(Configuration) 정보를 가진 파일이 존재
+      - ``/var/lib/kubelet/config.yaml``        
+        - Static Pod의 위치 정보
+          - ``staticPodPath: /etc/kubernetes/manifests``
+        - 해당 위치에 Pod의 Yaml 파일을 두면, ``kubelet``이 Pod를 자동 생성 및 실행함
+        - 해당 위치에 Pod의 Yaml 파일을 삭제하면, ``kubelet``이 Pod를 종료  
+    ```bash
+    root@worker-1:~# cat /var/lib/kubelet/config.yaml
+    apiVersion: kubelet.config.k8s.io/v1beta1
+    authentication:
+      anonymous:
+        enabled: false
+      webhook:
+        cacheTTL: 0s
+        enabled: true
+      x509:
+        clientCAFile: /etc/kubernetes/pki/ca.crt
+    authorization:
+      mode: Webhook
+      webhook:
+        cacheAuthorizedTTL: 0s
+        cacheUnauthorizedTTL: 0s
+    cgroupDriver: systemd
+    clusterDNS:
+    - 10.96.0.10
+    clusterDomain: cluster.local
+    cpuManagerReconcilePeriod: 0s
+    evictionPressureTransitionPeriod: 0s
+    fileCheckFrequency: 0s
+    healthzBindAddress: 127.0.0.1
+    healthzPort: 10248
+    httpCheckFrequency: 0s
+    imageMinimumGCAge: 0s
+    kind: KubeletConfiguration
+    logging: {}
+    memorySwap: {}
+    nodeStatusReportFrequency: 0s
+    nodeStatusUpdateFrequency: 0s
+    resolvConf: /run/systemd/resolve/resolv.conf
+    rotateCertificates: true
+    runtimeRequestTimeout: 0s
+    shutdownGracePeriod: 0s
+    shutdownGracePeriodCriticalPods: 0s
+    staticPodPath: /etc/kubernetes/manifests
+    streamingConnectionIdleTimeout: 0s
+    syncFrequency: 0s
+    volumeStatsAggPeriod: 0s
+    ```
+  - Master의 ``API, etcd, scheduler and controller``도 Master Node의 ``kubelet`` Daemon이 실행될 때, 생성한 Static Pod들임
+    ```bash
+    root@master:/etc/kubernetes/manifests# ls
+    etcd.yaml  kube-apiserver.yaml  kube-controller-manager.yaml  kube-scheduler.yaml
+    ```
+## Answer
+```bash
+# Step 01: Master Node 또는 kubectl이 실행가능한 곳에서 --dry-run=client 옵션을 이용해서 yaml 생성
+$ kubectl run web --image=nginx --dry-run=client -o yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: web
+  name: web
+spec:
+  containers:
+  - image: nginx
+    name: web
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+# Step 02: 해당 Worker Node에 접속
+$ ssh hk8s-w1
+Welcome to Ubuntu 20.04.3 LTS (GNU/Linux 5.13.0-41-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+127 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+New release '22.04.1 LTS' available.
+Run 'do-release-upgrade' to upgrade to it.
+
+Your Hardware Enablement Stack (HWE) is supported until April 2025.
+Last login: Mon Sep  5 21:58:56 2022 from 10.0.1.2
+# Step 03: Root로 접속 및 Static Pod Yaml 파일 위치 확인
+$ sudo -i
+[sudo] password for gusami: 
+$ cat /var/lib/kubelet/config.yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    cacheTTL: 0s
+    enabled: true
+  x509:
+    clientCAFile: /etc/kubernetes/pki/ca.crt
+authorization:
+  mode: Webhook
+  webhook:
+    cacheAuthorizedTTL: 0s
+    cacheUnauthorizedTTL: 0s
+cgroupDriver: systemd
+clusterDNS:
+- 10.96.0.10
+......
+staticPodPath: /etc/kubernetes/manifests
+streamingConnectionIdleTimeout: 0s
+syncFrequency: 0s
+volumeStatsAggPeriod: 0s
+# Step 04: Static Pod Yaml 파일 정의 및 저장
+root@hk8s-w1:/etc/kubernetes/manifests# vi web.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: web
+  name: web
+spec:
+  containers:
+  - image: nginx
+    name: web
+# Step 05: Master Node에서 Pod를 확인해 봄
+gusami@master:~$ kubectl get pods
+NAME           READY   STATUS    RESTARTS       AGE
+web-hk8s-w1    1/1     Running   1 (2m2s ago)   119s    
+```
+## 기타
+- ``kubelet`` 다시 시작하는 명령어
+  - ``$ systemctl restart kubelet``
+# 04. Multi-Container Pod 생성하기
