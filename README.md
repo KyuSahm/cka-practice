@@ -398,3 +398,140 @@ web-hk8s-w1    1/1     Running   1 (2m2s ago)   119s
 - ``kubelet`` 다시 시작하는 명령어
   - ``$ systemctl restart kubelet``
 # 04. Multi-Container Pod 생성하기
+## 검색 방법
+## Problem: multi-container Pod
+- create pod
+  - 작업 클러스터: hk8s
+  - Create a pod named ``lab004`` with 3 containers running: ``nginx, redis, memcached``
+## Answer
+- 하나의 Container를 가진 Pod를 생성하는 Yaml을 정의한 후, 여러 개의 Container로 확장
+```bash
+# Step 01. Context switch to hk8s
+$ kubectl config use-context hk8s
+Switched to context "hk8s"
+# Step 02. run with --dry-run option to make yaml file
+$ kubectl run lab004 --image=nginx --dry-run=client -o yaml > lab004.yaml
+$ cat lab004.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: lab004
+  name: lab004
+spec:
+  containers:
+  - image: nginx
+    name: lab004
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+# Step 03. 불필요한 라인을 삭제하고, redis, memcached를 추가 
+$ cat lab004.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lab004
+spec:
+  containers:
+  - image: nginx
+    name: nginx
+  - image: redis
+    name: redis
+  - image: memcached
+    name: memcached
+# Step 04. Yaml 파일을 이용해서 Pod 생성 및 확인
+$ kubectl create -f lab004.yaml
+pod/lab004 created
+$ kubectl get pods
+NAME                          READY   STATUS    RESTARTS      AGE
+lab004                        3/3     Running   0             57s
+# Step 05. Pod 상세 확인
+$ kubectl describe pod lab004 
+Name:         lab004
+Namespace:    product
+Priority:     0
+Node:         worker-1/10.0.1.5
+Start Time:   Thu, 15 Sep 2022 23:21:58 +0900
+Labels:       <none>
+Annotations:  <none>
+Status:       Running
+IP:           10.44.0.4
+IPs:
+  IP:  10.44.0.4
+Containers:
+  nginx:
+    Container ID:   docker://a9b07820ab2718a36e1b3f8ffb449c44e167157e8d8577edc0359bced37c2164
+    Image:          nginx
+    Image ID:       docker-pullable://nginx@sha256:0b970013351304af46f322da1263516b188318682b2ab1091862497591189ff1
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Thu, 15 Sep 2022 23:22:02 +0900
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-f4hrh (ro)
+  redis:
+    Container ID:   docker://1b429ec81fcc1a6302c2faa8cbb0fea80d84ab4609903548d0a08a087f42b33a
+    Image:          redis
+    Image ID:       docker-pullable://redis@sha256:091a7b5de688f283b30a4942280b64cf822bbdab0abfb2d2ce6db989f2d3c3f4
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Thu, 15 Sep 2022 23:22:09 +0900
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-f4hrh (ro)
+  memcached:
+    Container ID:   docker://514d309d1f2dbe94140b3fc5cd142020de58f6f31a94fe750850cf35f3128e73
+    Image:          memcached
+    Image ID:       docker-pullable://memcached@sha256:324479339ef09ec98467d7c0a8083909503e7af3095390614990af0fee781c7b
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Thu, 15 Sep 2022 23:22:15 +0900
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-f4hrh (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  kube-api-access-f4hrh:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  93s   default-scheduler  Successfully assigned product/lab004 to worker-1
+  Normal  Pulling    92s   kubelet            Pulling image "nginx"
+  Normal  Pulled     89s   kubelet            Successfully pulled image "nginx" in 2.71875907s
+  Normal  Created    89s   kubelet            Created container nginx
+  Normal  Started    89s   kubelet            Started container nginx
+  Normal  Pulling    89s   kubelet            Pulling image "redis"
+  Normal  Pulled     82s   kubelet            Successfully pulled image "redis" in 6.680726928s
+  Normal  Created    82s   kubelet            Created container redis
+  Normal  Started    82s   kubelet            Started container redis
+  Normal  Pulling    82s   kubelet            Pulling image "memcached"
+  Normal  Pulled     76s   kubelet            Successfully pulled image "memcached" in 6.343717936s
+  Normal  Created    76s   kubelet            Created container memcached
+  Normal  Started    76s   kubelet            Started container memcached
+```
+# 05. Side-car Container Pod 실행하기
