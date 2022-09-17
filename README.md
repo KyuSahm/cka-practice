@@ -535,3 +535,108 @@ Events:
   Normal  Started    76s   kubelet            Started container memcached
 ```
 # 05. Side-car Container Pod 실행하기
+## Side-car Container Pod의 개념
+- side-car: a small vehicle that is attached to the side of aa motorcycle for a passenger to ride in
+- 예제 모델: nginx container가 서비스 로그를 생성하고, 그 로그를 분석하는 별도의 container를 하나의 Pod안에 띄움
+  - nginx container: main container
+  - log 분석 container: side-car container
+  - 로그를 공통으로 접근하기 위해 서버의 디스크를 마운트해서 사용
+
+  ![sidecar_container_pod](./images/sidecar_container_pod.png)
+## 검색 방법
+- 검색어: ``sidecar``
+  - ``Communicate Between Containers in the Same Pod Using a Shared Volume`` or ``Logging Architecture | Kubernetes`` 선택
+  - https://kubernetes.io/docs/tasks/access-application-cluster/communicate-containers-same-pod-shared-volume/
+  - https://kubernetes.io/docs/concepts/cluster-administration/logging/
+## Problem: Side-car Container Pod
+- An existing Pod needs to be integrated into the Kubernetes built-in logging architecture (e.g. ``kubectl logs``). Adding a streaming ``sidecar`` container is a good and common way to accomplish this requirement.
+  - Add a sidecar container named ``sidecar``, using the ``busybox`` Image, to the existing Pod ``eshop-cart-app``.
+  - The new sidecar container has to run the following command: ``/bin/sh -c "tail -n+1 -F /var/log/eshop-app.log"``
+  - Use a Volume, mounted at ``/var/log``, to make the log file ``cart-app.log`` avaliable to the sidecar container.
+  - ``Don't modify the cart-app``
+## Answer
+```bash
+# Step 01: 현재 운영 중인 Pod 정보 확인
+$ kubectl get pod eshop-cart-app
+NAME      READY   STATUS    RESTARTS      AGE
+eshop-cart-app   1/1     Running   4 (41s ago)   19d
+# Step 02: 해당 Pod를 Yaml 형식으로 출력하기
+$ kubectl get pod eshop-cart-app -o yaml > eshop.yaml
+# Step 03: Yaml 파일 편집
+#  - 불필요한 내용을 지우자
+$ vi eshop.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: eshop-cart-app
+  namespace: default
+spec:
+  containers:
+  - image: busybox
+    name: cart-app
+    volumeMounts:
+    - mountPath: /var/log
+      name: varlog
+    # 아래는 필요없으므로, 삭제  
+    # - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+    #   name: kube-api-access-4k67v
+    #   readOnly: true
+    command:
+    - /bin/sh
+    - -c
+    - 'i=1;while :;do echo -e "$i: Price: $((RANDOM % 10000 + 1))" >> /var/log/cart-app.log;
+       i=$((i+1)); sleep 2; done'  
+  volumes:
+  - emptyDir: {}
+    name: varlog
+# Step 04: 해당 Yaml에 sidecar container을 추가
+$ vi eshop.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: eshop-cart-app
+  namespace: default
+spec:
+  containers:
+  - image: busybox
+    name: cart-app
+    volumeMounts:
+    - mountPath: /var/log
+      name: varlog
+    command:
+    - /bin/sh
+    - -c
+    - 'i=1;while :;do echo -e "$i: Price: $((RANDOM % 10000 + 1))" >> /var/log/cart-app.log;
+       i=$((i+1)); sleep 2; done'
+  - name: sidecar
+    image: busybox
+    volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+    command: ["/bin/sh"]
+    args: ["-c", "tail -n+1 -F /var/log/cart-app.log"]
+  volumes:
+  - emptyDir: {}
+    name: varlog
+# Step 05: 변경된 Pod를 적용 (생성 및 확인)
+$ kubectl apply -f eshop.yaml 
+The Pod "eshop-cart-app" is invalid: spec.containers: Forbidden: pod updates may not add or remove containers
+$ kubectl delete pod eshop-cart-app --force
+$ kubectl create -f eshop.yaml 
+pod/eshop-cart-app created
+$ kubectl get pods
+NAME             READY   STATUS    RESTARTS      AGE
+eshop-cart-app   2/2     Running   0             11s
+# Step 06: sidecar container의 로그 확인
+$ kubectl logs -f -c sidecar eshop-cart-app
+1: Price: 828
+2: Price: 4263
+3: Price: 6054
+4: Price: 9278
+5: Price: 7250
+6: Price: 1286
+7: Price: 7772
+8: Price: 1597
+9: Price: 5090
+```
+# 06. Deployment & Pod Scale
