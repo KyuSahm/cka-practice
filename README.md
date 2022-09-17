@@ -640,3 +640,149 @@ $ kubectl logs -f -c sidecar eshop-cart-app
 9: Price: 5090
 ```
 # 06. Deployment & Pod Scale
+## 검색 방법
+- 검색어: ``deployment``
+  - ``Deployments | Kubernetes`` 선택
+  - https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+    - 페이지내에서 ``Scaling a Deployment`` 검색
+## Problem 1: Pod scale out
+- 작업 클러스터: k8s
+  - Expand the number of running Pods in ``eshop-orders`` to 5
+    - namespace: ``devops``
+    - deployment: ``eshop-order``
+## Answer 1
+```bash
+# Step 01: k8s로 context 변경
+$ kubectl config use-context k8s
+Switched to context "k8s"
+# Step 02: devops namespace에서 동작 중인 deployment를 확인
+$ kubectl get deployments.apps -n devops
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+eshop-order  2/2     2            2           37d
+# Step 03: Scale out to 5 pods
+#  - 명령어는 Deployment 페이지에서 찾거나 "kubectl scale --help" 사용
+$ kubectl scale deployment/eshop-order --replicas=5 -n devops
+deployment.apps/eshop-order scaled
+# Step 04: 명령어를 통해서 5개의 Pod가 동작 중인지 확인 
+$ kubectl get pods -n devops
+NAME                          READY   STATUS    RESTARTS       AGE
+eshop-order-66c59c4d6d-422kn   1/1     Running   0              6m17s
+eshop-order-66c59c4d6d-4rvf6   1/1     Running   5 (165m ago)   125d
+eshop-order-66c59c4d6d-ckdp7   1/1     Running   0              6m17s
+eshop-order-66c59c4d6d-lrrnb   1/1     Running   0              6m17s
+eshop-order-66c59c4d6d-mxs4p   1/1     Running   0              6m17s
+$ kubectl get deployments -n devops
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+eshop-order  5/5     5            5           37d
+```
+## Problem 2: Deployment 생성하고 Scale 하기
+- 작업 클러스터: k8s
+  - Create a deployment as follows:
+  - TASK:
+    - name: ``webserver``
+    - ``2`` replicas
+    - label: ``app_env_stage=dev``
+    - container name: ``webserver``
+    - container image: ``nginx:1.14``
+  - Scale out Deployment.
+    - Scale the deployment webserver to ``3`` pods
+## Answer 2
+```bash
+# Step 01: k8s로 context 변경
+$ kubectl config use-context k8s
+Switched to context "k8s"
+# Step 02-1: Deployment 파일 정의를 이용한 방법
+#  - Deployment 페이지에서 yaml 정의를 가져옴
+$ vi webserver.yaml
+$ cat webserver.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webserver
+  labels:
+    app_env_stage: dev
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app_env_stage: dev
+  template:
+    metadata:
+      labels:
+        app_env_stage: dev
+    spec:
+      containers:
+      - name: webserver
+        image: nginx:1.14
+# Step 02-2: 명령어를 이용해서 --dry-run 옵션을 이용해서 yaml 파일을 생성하는 방법
+$ kubectl create deployment webserver --image=nginx:1.14 --replicas=2 --dry-run=client -o yaml > webserver.yaml
+$ vi webserver1.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app_env_stage: dev
+  name: webserver
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app_env_stage: dev
+  template:
+    metadata:
+      labels:
+        app_env_stage: dev
+    spec:
+      containers:
+      - image: nginx:1.14
+        name: webserver        
+$ kubectl apply -f webserver.yaml 
+deployment.apps/webserver created
+# Step 03: Pod Scale out to 3 Pods
+$ kubectl scale --replicas=3 deployment/webserver
+deployment.apps/webserver scaled
+# Step 04: 생성된 Deployment 확인 및 상세 정보 확인
+$ kubectl get deployments.apps 
+NAME        READY   UP-TO-DATE   AVAILABLE   AGE
+webserver   3/3     3            3           3m6s
+$ kubectl describe deployments.apps webserver
+Name:                   webserver
+Namespace:              devops
+CreationTimestamp:      Sat, 17 Sep 2022 20:40:26 +0900
+Labels:                 app_env_stage=dev
+Annotations:            deployment.kubernetes.io/revision: 1
+Selector:               app_env_stage=dev
+Replicas:               3 desired | 3 updated | 3 total | 3 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:  app_env_stage=dev
+  Containers:
+   webserver:
+    Image:        nginx:1.14
+    Port:         <none>
+    Host Port:    <none>
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Progressing    True    NewReplicaSetAvailable
+  Available      True    MinimumReplicasAvailable
+OldReplicaSets:  <none>
+NewReplicaSet:   webserver-5586594bbf (3/3 replicas created)
+Events:
+  Type    Reason             Age    From                   Message
+  ----    ------             ----   ----                   -------
+  Normal  ScalingReplicaSet  3m16s  deployment-controller  Scaled up replica set webserver-5586594bbf to 2
+  Normal  ScalingReplicaSet  46s    deployment-controller  Scaled up replica set webserver-5586594bbf to 3
+$ kubectl get pods -o wide --show-labels
+NAME                         READY   STATUS    RESTARTS   AGE     IP          NODE       NOMINATED NODE   READINESS GATES   LABELS
+webserver-5586594bbf-8pjxr   1/1     Running   0          6m59s   10.40.0.6   worker-3   <none>           <none>            app_env_stage=dev,pod-template-hash=5586594bbf
+webserver-5586594bbf-jq8ls   1/1     Running   0          6m59s   10.40.0.5   worker-3   <none>           <none>            app_env_stage=dev,pod-template-hash=5586594bbf
+webserver-5586594bbf-n5bfh   1/1     Running   0          4m29s   10.40.0.7   worker-3   <none>           <none>            app_env_stage=dev,pod-template-hash=5586594bbf
+```
+# 07. Rolling Update & Roll Back
+
