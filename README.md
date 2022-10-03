@@ -785,4 +785,180 @@ webserver-5586594bbf-jq8ls   1/1     Running   0          6m59s   10.40.0.5   wo
 webserver-5586594bbf-n5bfh   1/1     Running   0          4m29s   10.40.0.7   worker-3   <none>           <none>            app_env_stage=dev,pod-template-hash=5586594bbf
 ```
 # 07. Rolling Update & Roll Back
+## 검색 방법
+- Deployment 생성관련 검색어: ``kubectl reference``
+  - ``Kubectl Reference Docs`` 선택 > ``create`` > ``deployment``
+  - https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands
+- Rolling Update 관련 검색어: ``deployment``
+  - ``Deployments | Kubernetes`` 선택
+  - https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
 
+## Problem: Rolling Update
+- 작업 클러스터: ``k8s``
+  - Create a deployment as follows:
+  - Task:
+    - name: ``nginx-app``
+    - Using container ``nginx`` with version ``1.11.10-alpine``
+    - The deployment should contain ``3`` replicas
+  - Next, deploy the application with ``new version 1.11.13-alpine``, by performing a rolling update
+  - Finally, rollback that update to the previous version ``1.11.10-alpine``
+## Answer
+```bash
+# Step 01: Context 변경
+$ kubectl config use-context k8s
+Switched to context "k8s".
+# Step 02: create deployment ''nginx-app'' with version "1.11.10-alpine"
+$ kubectl create deployment nginx-app --image=nginx:1.11.10-alpine --replicas=3
+deployment.apps/nginx-app created
+# Step 03: 제대로 생성되었는지 확인
+$ kubectl get deployments.apps nginx-app 
+NAME        READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-app   3/3     3            3           7m50s
+$ kubectl describe deployments.apps nginx-app
+Name:                   nginx-app
+Namespace:              devops
+CreationTimestamp:      Mon, 03 Oct 2022 10:48:18 +0900
+Labels:                 app=nginx-app
+Annotations:            deployment.kubernetes.io/revision: 1
+Selector:               app=nginx-app
+Replicas:               3 desired | 3 updated | 3 total | 3 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:  app=nginx-app
+  Containers:
+   nginx:
+    Image:        nginx:1.11.10-alpine
+    Port:         <none>
+    Host Port:    <none>
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Available      True    MinimumReplicasAvailable
+  Progressing    True    NewReplicaSetAvailable
+OldReplicaSets:  <none>
+NewReplicaSet:   nginx-app-fc7875d8 (3/3 replicas created)
+Events:
+  Type    Reason             Age   From                   Message
+  ----    ------             ----  ----                   -------
+  Normal  ScalingReplicaSet  2m6s  deployment-controller  Scaled up replica set nginx-app-fc7875d8 to 3
+$ kubectl get pods | grep nginx-app
+nginx-app-fc7875d8-s5fzl     1/1     Running   0             8m4s
+nginx-app-fc7875d8-vxcqc     1/1     Running   0             8m4s
+nginx-app-fc7875d8-wvkpt     1/1     Running   0             8m4s
+# Step 04: Rolling Update to nginx 1.16.1.
+#  - "--record" 옵션을 사용해서 주석을 남겨라
+#  - "nginx="의 nginx-app는 container의 이름
+$ kubectl set image deployment.apps/nginx-app nginx=1.11.13-alpine --record
+deployment.apps/nginx-app image updated
+# Step 05: Rolling Update 상태 관찰
+$ kubectl rollout status deployment/nginx-app
+deployment "nginx-app" successfully rolled out
+# Step 06: Rollout history check
+$ kubectl rollout history deployment nginx-app 
+deployment.apps/nginx-app 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         kubectl set image deployment.apps/nginx-app nginx=1.11.13-alpine --record=true
+# Step 07: Rollback to version 1.11.10
+$ kubectl rollout undo deployment/nginx-app --to-revision=1
+deployment.apps/nginx-app rolled back
+# Step 08: Rollback이 정상적으로 이루어졌는지 확인
+$ kubectl describe deployments.apps nginx-app 
+Name:                   nginx-app
+Namespace:              devops
+CreationTimestamp:      Mon, 03 Oct 2022 11:32:51 +0900
+Labels:                 app=nginx-app
+Annotations:            deployment.kubernetes.io/revision: 3
+Selector:               app=nginx-app
+Replicas:               3 desired | 3 updated | 3 total | 3 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:  app=nginx-app
+  Containers:
+   nginx:
+    Image:        nginx:1.11.10-alpine
+    Port:         <none>
+    Host Port:    <none>
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Available      True    MinimumReplicasAvailable
+  Progressing    True    NewReplicaSetAvailable
+OldReplicaSets:  <none>
+NewReplicaSet:   nginx-app-fc7875d8 (3/3 replicas created)
+Events:
+  Type    Reason             Age    From                   Message
+  ----    ------             ----   ----                   -------
+  Normal  ScalingReplicaSet  3m13s  deployment-controller  Scaled up replica set nginx-app-fc7875d8 to 3
+  Normal  ScalingReplicaSet  2m59s  deployment-controller  Scaled up replica set nginx-app-74d977f785 to 1
+  Normal  ScalingReplicaSet  52s    deployment-controller  Scaled down replica set nginx-app-74d977f785 to 0
+$ kubectl get pods -o wide
+NAME                         READY   STATUS    RESTARTS      AGE     IP           NODE       NOMINATED NODE   READINESS GATES
+nginx-app-fc7875d8-bkzw7     1/1     Running   0             3m56s   10.40.0.8    worker-3   <none>           <none>
+nginx-app-fc7875d8-jdmth     1/1     Running   0             3m56s   10.44.0.10   worker-1   <none>           <none>
+nginx-app-fc7875d8-nj8c6     1/1     Running   0             3m56s   10.44.0.9    worker-1   <none>           <none>
+# Step 08-1 : Pod의 세부 상태 확인
+$ kubectl describe pod nginx-app-fc7875d8-bkzw7
+Name:         nginx-app-fc7875d8-bkzw7
+Namespace:    devops
+Priority:     0
+Node:         worker-3/10.0.1.7
+Start Time:   Mon, 03 Oct 2022 11:32:52 +0900
+Labels:       app=nginx-app
+              pod-template-hash=fc7875d8
+Annotations:  <none>
+Status:       Running
+IP:           10.40.0.8
+IPs:
+  IP:           10.40.0.8
+Controlled By:  ReplicaSet/nginx-app-fc7875d8
+Containers:
+  nginx:
+    Container ID:   docker://91bde9706d483596149d1f3598c0ca0f8033fe5aeec73eb98fec18d0c14ca1f2
+    Image:          nginx:1.11.10-alpine
+    Image ID:       docker-pullable://nginx@sha256:aa0daf2b17c370a1da371a767110a43b390a9db90b90d2d1b07862dc81754d61
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Mon, 03 Oct 2022 11:32:52 +0900
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-nsf4v (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  kube-api-access-nsf4v:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type    Reason     Age    From               Message
+  ----    ------     ----   ----               -------
+  Normal  Scheduled  4m17s  default-scheduler  Successfully assigned devops/nginx-app-fc7875d8-bkzw7 to worker-3
+  Normal  Pulled     4m16s  kubelet            Container image "nginx:1.11.10-alpine" already present on machine
+  Normal  Created    4m16s  kubelet            Created container nginx
+  Normal  Started    4m16s  kubelet            Started container nginx
+```
+# 08. NodeSelector
