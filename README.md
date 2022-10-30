@@ -967,7 +967,7 @@ Events:
 - 예를 들어, tensorflow와 관련된 Pod를 gpu가 설치된 Node에만 실행할 때 사용하고 싶을 때 사용
   - Step 01. Node마다 Label을 이용하여 필요한 정보를 명시 가능. gpu가 있는 Node들에 ``gpu=true``와 같은 Label을 생성해 둠
   - Step 02. API를 이용해서 Pod를 생성할 때, ``nodeSelector``옵션에 ``gpu: true``를 명시
-    - k8s의 scheduler이 해당 정보를 이용해서 적절한 Node를 선택해서 Schedule함
+    - k8s의 scheduler가 해당 정보를 이용해서 적절한 Node를 선택해서 Schedule함
 ## 검색 방법
 - NodeSelector 관련 검색어: ``node selector`` 
   - ``Assign Pods to Nodes | Kubernetes`` 선택
@@ -1099,5 +1099,5 @@ Events:
   Normal  Created    4m31s  kubelet            Created container eshop-store
   Normal  Started    4m31s  kubelet            Started container eshop-store
 ```
-# 08. Node 관리
+# 09. Node 관리
 ## 개념
