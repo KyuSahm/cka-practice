@@ -962,3 +962,142 @@ Events:
   Normal  Started    4m16s  kubelet            Started container nginx
 ```
 # 08. NodeSelector
+## 개념
+![node_selector](./images/node_selector.png)     
+- 예를 들어, tensorflow와 관련된 Pod를 gpu가 설치된 Node에만 실행할 때 사용하고 싶을 때 사용
+  - Step 01. Node마다 Label을 이용하여 필요한 정보를 명시 가능. gpu가 있는 Node들에 ``gpu=true``와 같은 Label을 생성해 둠
+  - Step 02. API를 이용해서 Pod를 생성할 때, ``nodeSelector``옵션에 ``gpu: true``를 명시
+    - k8s의 scheduler이 해당 정보를 이용해서 적절한 Node를 선택해서 Schedule함
+## 검색 방법
+- NodeSelector 관련 검색어: ``node selector`` 
+  - ``Assign Pods to Nodes | Kubernetes`` 선택
+  - https://kubernetes.io/docs/tasks/configure-pod-container/assign-pods-nodes/
+    - label을 node에 할당하는 방법과 label을 포함한 node정보를 확인하는 방법이 존재
+    - pod 생성 시, nodeSelector 사용 방법도 있음
+## Problem: Node Selector
+- 작업 클러스터: ``kubectl config use-context k8s``
+  - Schedule a pod as follows:
+    - Name: ``eshop-store``
+    - Image: ``nginx``
+    - Node selector: ``disktype=ssd``
+## Answer
+```bash
+# Step 01. k8s로 context 변경
+$ kubectl config use-context k8s
+Switched to context "k8s".
+# Step 02. worker-1 node에 disktype=ssd Label 추가
+$ kubectl label nodes worker-1 disktype=ssd
+node/worker-1 labeled
+# Step 03. worker node의 label 정보 확인
+#  - worker-1가 disktype=ssd란 label 정보를 가지고 있음
+$ kubectl get nodes --show-labels
+NAME       STATUS     ROLES                  AGE    VERSION   LABELS
+master     Ready      control-plane,master   351d   v1.22.3   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/arch=amd64,kubernetes.io/hostname=master,kubernetes.io/os=linux,node-role.kubernetes.io/control-plane=,node-role.kubernetes.io/master=,node.kubernetes.io/exclude-from-external-load-balancers=
+worker-1   Ready      <none>                 351d   v1.22.3   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,disk=ssd,disktype=ssd,kubernetes.io/arch=amd64,kubernetes.io/hostname=worker-1,kubernetes.io/os=linux
+worker-2   Ready      <none>                 351d   v1.22.3   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/arch=amd64,kubernetes.io/hostname=worker-2,kubernetes.io/os=linux
+worker-3   NotReady   <none>                 275d   v1.23.3   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,disk=ssd,kubernetes.io/arch=amd64,kubernetes.io/hostname=worker-3,kubernetes.io/os=linux
+## disktype label 정보만 추출해서 보기
+$ kubectl get nodes -L disktype
+NAME       STATUS     ROLES                  AGE    VERSION   DISKTYPE
+master     Ready      control-plane,master   351d   v1.22.3   
+worker-1   Ready      <none>                 351d   v1.22.3   ssd
+worker-2   Ready      <none>                 351d   v1.22.3   
+worker-3   NotReady   <none>                 275d   v1.23.3  
+## disktype=ssd인 node들만 찾기
+$ kubectl get nodes --show-labels --selector=disktype=ssd
+NAME       STATUS   ROLES    AGE    VERSION   LABELS
+worker-1   Ready    <none>   351d   v1.22.3   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,disk=ssd,disktype=ssd,kubernetes.io/arch=amd64,kubernetes.io/hostname=worker-1,kubernetes.io/os=linux
+# Step 4. Pod 생성
+## Step 4-1. --dry-run=client 옵션을 이용해서 yaml 파일을 생성해 봄
+$ kubectl run eshop-store --image=nginx --dry-run=client -o yaml > eshop-store.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: eshop-store
+  name: eshop-store
+spec:
+  containers:
+  - image: nginx
+    name: eshop-store
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}
+## Step 4-2. 불필요한 옵션을 삭제하고, nodeSelector 옵션을 추가
+$ vi eshop-store.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: eshop-store
+spec:
+  containers:
+  - image: nginx
+    name: eshop-store
+  nodeSelector:
+    disktype: ssd
+# Step 5. Pod 생성
+$ kubectl apply -f eshop-store.yaml 
+pod/eshop-store created
+## 생성 확인
+# - worker-1에 생성되었음
+~$ kubectl get pods -o wide
+NAME                         READY   STATUS             RESTARTS      AGE     IP           NODE       NOMINATED NODE   READINESS GATES
+eshop-store                  1/1     Running            0             2m59s   10.44.0.6    worker-1   <none>           <none>
+## Pod 상세 정보 확인
+# - Pod Name, Image, Node-Selectors를 확인하면, 정상임을 확인
+$ kubectl describe pod eshop-store 
+Name:         eshop-store
+Namespace:    devops
+Priority:     0
+Node:         worker-1/10.0.1.5
+Start Time:   Sun, 30 Oct 2022 21:05:03 +0900
+Labels:       <none>
+Annotations:  <none>
+Status:       Running
+IP:           10.44.0.6
+IPs:
+  IP:  10.44.0.6
+Containers:
+  eshop-store:
+    Container ID:   docker://56173d2a605f7c8e68077a910d219ff999aa5072bb5a95d7b5f3075b376abdc3
+    Image:          nginx
+    Image ID:       docker-pullable://nginx@sha256:943c25b4b66b332184d5ba6bb18234273551593016c0e0ae906bab111548239f
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Sun, 30 Oct 2022 21:05:11 +0900
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-bhmjv (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  kube-api-access-bhmjv:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              disktype=ssd
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type    Reason     Age    From               Message
+  ----    ------     ----   ----               -------
+  Normal  Scheduled  4m39s  default-scheduler  Successfully assigned devops/eshop-store to worker-1
+  Normal  Pulling    4m38s  kubelet            Pulling image "nginx"
+  Normal  Pulled     4m31s  kubelet            Successfully pulled image "nginx" in 7.585124783s
+  Normal  Created    4m31s  kubelet            Created container eshop-store
+  Normal  Started    4m31s  kubelet            Started container eshop-store
+```
+# 08. Node 관리
+## 개념
